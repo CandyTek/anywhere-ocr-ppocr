@@ -32,6 +32,12 @@ from typing import Callable
 
 APP_DIR = Path(__file__).resolve().parent
 WORKER = APP_DIR / "PaddleOCR" / "PaddleOCR_worker.py"
+# The native worker (C# + ONNX Runtime, see OcrWorker/) is preferred when it has
+# been built; it needs a few hundred MB instead of several GB of RAM.
+NATIVE_WORKER = Path(
+    os.environ.get("ANYWHERE_OCR_WORKER")
+    or APP_DIR / "OcrWorker" / "dist" / "AnywhereOcrWorker.exe"
+)
 HOST = "127.0.0.1"
 PORT = 48626
 MODEL_NAME = "PP-OCRv6_medium"
@@ -316,19 +322,27 @@ class WorkerClient:
     def start(self, progress: Callable[[str], None]) -> None:
         if self.healthy():
             return
-        if not WORKER.is_file():
+        use_native = (
+            os.environ.get("ANYWHERE_OCR_BACKEND", "").lower() != "python"
+            and NATIVE_WORKER.is_file()
+        )
+        if not use_native and not WORKER.is_file():
             raise FileNotFoundError(f"OCR worker not found: {WORKER}")
 
         use_gpu = os.environ.get("ANYWHERE_OCR_USE_GPU")
         if use_gpu is None:
-            use_gpu = "1" if Path(
+            use_gpu = "1" if use_native or Path(
                 r"C:\ProgramData\miniconda3\envs\ult\python.exe"
             ).is_file() else "0"
         gpu_id = os.environ.get("ANYWHERE_OCR_GPU_ID", "0")
         device = f"gpu:{gpu_id}" if use_gpu not in ("", "0", "false", "False") else "cpu"
-        command = [
-            self.python_executable(),
-            str(WORKER),
+        if use_native:
+            launcher = [str(NATIVE_WORKER)]
+            workdir = NATIVE_WORKER.parent
+        else:
+            launcher = [self.python_executable(), str(WORKER)]
+            workdir = WORKER.parent
+        command = launcher + [
             "--port",
             str(PORT),
             "--device",
@@ -340,7 +354,7 @@ class WorkerClient:
         startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         self.process = subprocess.Popen(
             command,
-            cwd=WORKER.parent,
+            cwd=workdir,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

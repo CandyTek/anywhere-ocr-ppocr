@@ -1,158 +1,138 @@
-# 随处 OCR（Anywhere OCR）— PP-OCRv6 GPU 版
+# Anywhere OCR — PP-OCRv6 (GPU-Accelerated)
 
-按住 `Win` 键并拖动鼠标左键框选屏幕区域，松开后立即识别文字并复制到剪贴板。
-本分支将原项目的 PaddleOCR 2.x 本地 DLL 升级为官方
-**PP-OCRv6_medium** 检测与识别模型，并支持 NVIDIA GPU 加速。
+Hold the `Win` key and drag your left mouse button to select an area on the screen. Upon release, the text within the selection is immediately recognized and copied to your clipboard.
+This branch upgrades the original project’s PaddleOCR 2.x local DLLs to the official **PP-OCRv6_medium** detection and recognition model, with added support for NVIDIA GPU acceleration.
 
-## 项目来源与致谢
+## Origins and Acknowledgments
 
-本项目 fork 并改造自 [HKMV/anywhere-ocr](https://github.com/HKMV/anywhere-ocr)。
-衷心感谢原作者 **HKMV** 开源这套简洁、实用的屏幕框选 OCR 与翻译工具；
-原项目完成了热键框选、结果展示、剪贴板写入及翻译界面的主要工作，本分支是在其
-基础上升级 OCR 推理引擎和部署方式。
+This project is a fork and modification of [HKMV/anywhere-ocr](https://github.com/HKMV/anywhere-ocr).
+Many thanks to the original author, **HKMV**, for open-sourcing this concise and practical tool for screen-selection OCR and translation.
+The original project established the core functionality—hotkey-based screen selection, result display, clipboard integration, and a translation interface—upon which this branch builds by upgrading the OCR inference engine and deployment method.
 
-同时感谢以下项目和作者：
+Special thanks also go to the following projects and authors:
 
-- [PaddlePaddle/PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)：
-  PP-OCRv6 模型、训练成果和 Python 推理框架。
-- [@telppa/PaddleOCR-AutoHotkey](https://github.com/telppa/PaddleOCR-AutoHotkey)：
-  原始 AutoHotkey PaddleOCR 工具类。
-- [@telppa/Translation-Terminator](https://github.com/telppa/Translation-Terminator)：
-  翻译工具类。
-- [HKMV/Edge.ahk](https://github.com/HKMV/Edge.ahk)：
-  使用 Windows 自带的 Edge 内核改进翻译功能。
+- [PaddlePaddle/PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR):
+For the PP-OCRv6 models, training results, and Python inference framework.
+- [@telppa/PaddleOCR-AutoHotkey](https://github.com/telppa/PaddleOCR-AutoHotkey):
+For the original AutoHotkey PaddleOCR utility class.
+- [@telppa/Translation-Terminator](https://github.com/telppa/Translation-Terminator):
+For the translation utility class.
+- [HKMV/Edge.ahk](https://github.com/HKMV/Edge.ahk):
+For leveraging the Windows-native Edge engine to enhance translation capabilities.
 
-请在二次分发、修改或发布 Release 时保留上述来源和致谢，并分别遵守各上游项目的
-许可证。
+Please retain these attributions and acknowledgments when redistributing, modifying, or publishing releases, and ensure compliance with the respective licenses of each upstream project.
 
-## 功能
+## Features
 
-- `Win + 鼠标左键拖动`：框选任意屏幕区域进行 OCR。
-- 自动把识别结果复制到剪贴板。
-- 支持简体中文、繁体中文、英文、日文和 46 种拉丁字母语言。
-- 支持百度翻译和搜狗翻译。
-- 使用 Microsoft Edge 内核显示翻译页面。
-- 默认使用 `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec`。
-- 支持 NVIDIA GPU；无 NVIDIA GPU 时也能使用 CPU。
-- Python OCR 进程常驻：模型仅在首次调用时加载，后续框选无需重复初始化。
+- `Win + Left Mouse Drag`: Select any area on the screen to perform OCR.
+- Automatically copies recognized text to the clipboard.
+- Supports Simplified Chinese, Traditional Chinese, English, Japanese, and 46 other languages ​​that use the Latin script. - Supports Baidu Translate and Sogou Translate.
+- Uses the Microsoft Edge engine to display translation pages.
+- Defaults to using `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec`.
+- Supports NVIDIA GPUs; can also run on a CPU if no NVIDIA GPU is available.
+- Persistent OCR worker process: models are loaded only upon the first invocation, eliminating the need for re-initialization during subsequent selections.
+- Two interchangeable workers: a native C# worker built on ONNX Runtime + DirectML that needs only a few hundred MB of RAM and works on any Windows GPU, and the original Python worker built on PaddleOCR 3.x. See [Native Worker (Low Memory)](#native-worker-low-memory).
 
-## 为什么升级到 PP-OCRv6
+## Why Upgrade to PP-OCRv6
 
-PP-OCRv6 是 PaddleOCR 新一代通用文字识别方案，medium、small、tiny 三档模型采用
-新的 PPLCNetV4 统一骨干网络。相较原项目中年代较早的 PaddleOCR 2.x mobile 模型，
-它的主要优势包括：
+PP-OCRv6 is the latest generation of general-purpose text recognition solutions from PaddleOCR. Its "medium," "small," and "tiny" model variants utilize the new PPLCNetV4 unified backbone network. Compared to the older PaddleOCR 2.x mobile models used in previous versions of this project, it offers several key advantages:
 
-- **识别精度更高**：官方内部多场景测试中，medium 的文字检测 Hmean 为 `86.2%`，
-  文字识别加权准确率为 `83.2%`；相比 PP-OCRv5_server 分别提升 `4.6` 和 `5.1`
-  个百分点。
-- **多语言模型统一**：medium 和 small 使用同一套模型支持 50 种语言，不必因为
-  中、英、日文混排而切换识别模型。
-- **复杂场景更可靠**：针对手写字、模糊文字、旋转文字、艺术字、点阵字符、
-  数字显示屏、工业字符和不规则场景做了增强。
-- **更少的语言幻觉**：PP-OCRv6 仍是检测加识别式 OCR，目标是忠实输出图片中的
-  字符，不会像通用视觉语言模型一样主动“改写”原文。
-- **GPU 推理速度快**：模型规模仅约 3450 万参数。项目已在 NVIDIA GeForce
-  RTX 4060 Ti 16 GB 上完成实际 GPU 推理验证；模型预热完成后，日常屏幕框选的
-  检测和识别响应非常快，4k屏幕文本识别耗时 2.5s。
-- **可按设备选择规模**：服务器或高性能显卡使用 medium；普通桌面、笔记本可使用
-  small；低配置设备可选择 tiny。
+- **Higher Recognition Accuracy**: In internal multi-scenario testing, the "medium" model achieved an Hmean of `86.2%` for text detection and a weighted accuracy of `83.2%` for text recognition—improvements of `4.6` and `5.1` percentage points, respectively, over the PP-OCRv5_server model.
+- **Unified Multilingual Support**: The "medium" and "small" models support 50 languages ​​within a single framework, removing the need to switch models when handling mixed-language text (e.g., Chinese, English, and Japanese).
+- **Enhanced Reliability in Complex Scenarios**: Improved performance for handwritten text, blurred text, rotated text, stylized/artistic fonts, dot-matrix characters, digital displays, industrial markings, and irregular layouts.
+- **Reduced "Hallucinations"**: As a detection-and-recognition-based OCR system, PP-OCRv6 focuses on faithfully transcribing the characters present in an image, rather than "rewriting" the original text as some general-purpose vision-language models might.
+- **Fast GPU Inference**: The model consists of approximately 34.5 million parameters. The project has been validated through actual GPU inference on an NVIDIA GeForce RTX 4060 Ti (16 GB). Once the model is warmed up, it delivers highly responsive detection and recognition for user-selected screen areas; text recognition on a 4K screen takes approximately 2.5 seconds.
+- **Model sizing based on hardware**: Use the `medium` model for servers or high-performance GPUs; the `small` model for standard desktops or laptops; and the `tiny` model for low-end devices.
 
-详细指标和支持语言请参阅
-[PP-OCRv6 官方介绍](https://www.paddleocr.ai/latest/en/version3.x/algorithm/PP-OCRv6/PP-OCRv6.html)。
+For detailed metrics and supported languages, please refer to the [official PP-OCRv6 documentation](https://www.paddleocr.ai/latest/en/version3.x/algorithm/PP-OCRv6/PP-OCRv6.html).
 
-## 模型档位
+## Model Tiers
 
-| 档位 | 检测模型 | 识别模型 | 总参数量 | 官方定位 | 建议 |
+| Tier | Detection Model | Recognition Model | Total Parameters | Intended Use | Recommendation |
 | --- | --- | --- | ---: | --- | --- |
-| medium | `PP-OCRv6_medium_det` | `PP-OCRv6_medium_rec` | 约 34.5M | 服务器/高精度 | 本项目默认档；建议使用支持CUDA加速显卡 |
-| small | `PP-OCRv6_small_det` | `PP-OCRv6_small_rec` | 约 7.7M | 移动端/桌面端 | 精度与速度平衡 |
-| tiny | `PP-OCRv6_tiny_det` | `PP-OCRv6_tiny_rec` | 约 1.5M | 边缘设备/IoT | 内存占用最低、速度最快 |
+| medium | `PP-OCRv6_medium_det` | `PP-OCRv6_medium_rec` | ~34.5M | Servers / High Accuracy | Default tier for this project; a GPU with CUDA acceleration is recommended. |
+| small | `PP-OCRv6_small_det` | `PP-OCRv6_small_rec` | ~7.7M | Mobile / Desktop | Balanced accuracy and speed. |
+| tiny | `PP-OCRv6_tiny_det` | `PP-OCRv6_tiny_rec` | ~1.5M | Edge Devices / IoT | Lowest memory footprint and fastest speed. |
 
-medium 精度最高；tiny 速度最快。模型越小，低清晰度、手写、艺术字和复杂背景下的
-准确率通常越低。
+The `medium` tier offers the highest accuracy, while the `tiny` tier provides the fastest speed. Generally, smaller models exhibit lower accuracy when handling low-resolution text, handwriting, stylized fonts, or text against complex backgrounds. Official Model Pages:
 
-官方模型页面：
+- [PP-OCRv6 Hugging Face Model Collection](https://huggingface.co/collections/PaddlePaddle/pp-ocrv6)
+- [Medium Detection](https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det) /
+[Medium Recognition](https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec)
+- [Small Detection](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det) /
+[Small Recognition](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec)
+- [Tiny Detection](https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det) /
+[Tiny Recognition](https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec)
 
-- [PP-OCRv6 Hugging Face 模型集合](https://huggingface.co/collections/PaddlePaddle/pp-ocrv6)
-- [medium 检测](https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det) /
-  [medium 识别](https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec)
-- [small 检测](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det) /
-  [small 识别](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec)
-- [tiny 检测](https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det) /
-  [tiny 识别](https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec)
-
-## 工作原理
+## How It Works
 
 ```text
-Win + 鼠标框选
-       │
-       ▼
-AutoHotkey 截取区域并保存临时 PNG
-       │
-       ▼
-127.0.0.1:48626 本机 OCR Worker
-       │
-       ├── PP-OCRv6_medium_det：定位文字
-       └── PP-OCRv6_medium_rec：识别文字
-       │
-       ▼
-识别结果返回 AutoHotkey → 界面显示 → 写入剪贴板
+Win + Mouse Selection (Drag-to-select)
+│
+▼
+AutoHotkey captures the selected area and saves it as a temporary PNG
+│
+▼
+Local OCR Worker at 127.0.0.1:48626
+│
+├── PP-OCRv6_medium_det: Locates text
+└── PP-OCRv6_medium_rec: Recognizes text
+│
+▼
+Results returned to AutoHotkey → Displayed on screen → Copied to clipboard
 ```
 
-旧版 `PaddleOCR.dll` 基于 PaddleOCR 2.x，不能直接加载 PP-OCRv6。现在由
-`PaddleOCR/PaddleOCR_worker.py` 使用官方 PaddleOCR 3.x Python API 推理；
-`PaddleOCR/PaddleOCR.ahk` 负责启动 Worker 并通过仅监听本机的 HTTP 接口通信。
-Worker 常驻内存，因此不会在每次框选时重新加载模型。
+The legacy `PaddleOCR.dll` was based on PaddleOCR 2.x and cannot load PP-OCRv6 directly. `PaddleOCR/PaddleOCR.ahk` manages a resident worker process and communicates with it through a local-only HTTP interface, so the models do not need to be reloaded every time a selection is made. Two workers implement that interface:
 
-## 部署要求
+| Worker | Implementation | Typical RAM | Notes |
+| --- | --- | --- | --- |
+| `OcrWorker\dist\AnywhereOcrWorker.exe` | C# (.NET 8) + ONNX Runtime + DirectML | a few hundred MB | Preferred whenever it has been built. Runs on NVIDIA, AMD and Intel GPUs through DirectML, or on the CPU. |
+| `PaddleOCR\PaddleOCR_worker.py` | Python + PaddleOCR 3.x + PaddlePaddle | several GB | The original worker; also used for downloading the official models. |
 
-### 必需环境
+`PaddleOCR.ahk` starts the native worker when `OcrWorker\dist\AnywhereOcrWorker.exe` exists and falls back to the Python worker otherwise. Both workers run the same PP-OCRv6 models with the same pre- and post-processing, so the recognized text is the same.
 
-- Windows 10 或 Windows 11，64 位。
-- 使用 AHK 前端时需要
-  [AutoHotkey v1.1 Unicode x64](https://www.autohotkey.com/)；使用 Python 前端时
-  不需要安装 AutoHotkey。本项目的 AHK 代码是 v1 语法，不能直接使用
-  AutoHotkey v2 运行。
-- 64 位 Python 3.9–3.13；推荐 Python 3.10。
-- PaddleOCR 3.7.x。
-- Microsoft Edge（使用翻译功能时需要）。
+## Deployment Requirements
 
-### GPU 环境
+### Required Environment
 
-- NVIDIA GPU，建议计算能力不低于 7.5。
-- RTX 4060 Ti 属于 Ada 架构，可使用 CUDA 12.6 版 PaddlePaddle。
-- CUDA 12.6 包要求 NVIDIA 驱动至少为 `550.54.14`；本机验证驱动为
-  `560.94`。
-- PaddlePaddle 的 pip 包会安装所需 CUDA/cuDNN 运行库，通常不需要另外配置
-  系统 CUDA Toolkit。重点是显卡驱动版本满足要求。
+- Windows 10 or Windows 11 (64-bit). - If using the AHK frontend, [AutoHotkey v1.1 Unicode x64](https://www.autohotkey.com/) is required; if using the Python frontend, AutoHotkey installation is not necessary. The AHK code in this project uses v1 syntax and cannot be run directly with AutoHotkey v2.
+- 64-bit Python 3.9–3.13 (Python 3.10 is recommended).
+- PaddleOCR 3.7.x.
+- Microsoft Edge (required if using the translation feature).
 
-官方安装说明：
-[PaddlePaddle Windows pip 安装](https://www.paddlepaddle.org.cn/documentation/docs/en/install/pip/windows-pip_en.html)。
+### GPU Environment
 
-## 部署方式一：Conda + 英伟达显卡
+- NVIDIA GPU with a compute capability of 7.5 or higher is recommended.
+- The RTX 4060 Ti, based on the Ada architecture, supports PaddlePaddle with CUDA 12.6.
+- The CUDA 12.6 package requires an NVIDIA driver version of at least `550.54.14`; the version verified for this setup is `560.94`.
+- The PaddlePaddle pip package includes the necessary CUDA/cuDNN runtime libraries, so there is generally no need to configure a separate system-wide CUDA Toolkit. The key requirement is that your graphics driver version meets the specified criteria.
 
-以下命令在 PowerShell 或 Anaconda Prompt 中执行。
+Official installation instructions:
+[PaddlePaddle Windows pip installation](https://www.paddlepaddle.org.cn/documentation/docs/en/install/pip/windows-pip_en.html).
 
-### 1. 克隆项目
+## Deployment Method 1: Conda + NVIDIA GPU
+
+Execute the following commands in PowerShell or an Anaconda Prompt.
+
+### 1. Clone the project
 
 ```powershell
-git clone https://github.com/<你的用户名>/<你的仓库名>.git
-cd <你的仓库名>
+git clone https://github.com/<your-username>/<your-repository-name>.git
+cd <your-repository-name>
 ```
 
-### 2. 检查显卡和驱动
+### 2. Check GPU and driver
 
 ```powershell
 nvidia-smi
 ```
 
-确认能看到 NVIDIA GPU，并且 Driver Version 不低于 `550.54.14`。
+Ensure that your NVIDIA GPU is detected and that the "Driver Version" is at least `550.54.14`.
 
-### 3. 创建 `ult` 环境
+### 3. Create the `ult` environment
 
-本项目会自动优先查找
-`C:\ProgramData\miniconda3\envs\ult\python.exe`。如果你的 Conda 安装在其他
-目录，也可以在后文通过环境变量指定。
+This project is configured to automatically look for the Python interpreter at `C:\ProgramData\miniconda3\envs\ult\python.exe`. If your Conda is installed in a different
+directory, you can specify it later using an environment variable.
 
 ```powershell
 conda create -n ult python=3.10 -y
@@ -160,35 +140,34 @@ conda activate ult
 python -m pip install --upgrade pip
 ```
 
-### 4. 安装 GPU 版 PaddlePaddle
+### 4. Install the GPU Version of PaddlePaddle
 
-RTX 4060 Ti 和兼容驱动推荐 CUDA 12.6 wheel：
+For an RTX 4060 Ti with compatible drivers, the CUDA 12.6 wheel is recommended:
 
 ```powershell
 python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
 ```
 
-如果驱动较旧但符合 CUDA 11.8 要求，可改用：
+If you have older drivers that meet the requirements for CUDA 11.8, use this instead:
 
 ```powershell
 python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 ```
 
-不要同时安装 `paddlepaddle` CPU 包和 `paddlepaddle-gpu` GPU 包。
+Do not install both the `paddlepaddle` (CPU) package and the `paddlepaddle-gpu` (GPU) package simultaneously.
 
-### 5. 安装 PaddleOCR
+### 5. Install PaddleOCR
 
 ```powershell
 python -m pip install paddleocr==3.7.0
 ```
-
-### 6. 验证 PaddlePaddle 和 GPU
+### 6. Verify PaddlePaddle and GPU
 
 ```powershell
 python -c "import paddle; print('Paddle:', paddle.__version__); print('CUDA build:', paddle.device.is_compiled_with_cuda()); print('GPU count:', paddle.device.cuda.device_count()); paddle.utils.run_check()"
 ```
 
-期望至少看到：
+You should see at least the following:
 
 ```text
 Paddle: 3.2.2
@@ -197,23 +176,23 @@ GPU count: 1
 PaddlePaddle is installed successfully!
 ```
 
-### 7. 指定 Python 路径
+### 7. Specify the Python Path
 
-如果 `ult` 不在默认位置，设置用户级环境变量：
+If the `ult` environment is not in the default location, set the user-level environment variables:
 
 ```powershell
 [Environment]::SetEnvironmentVariable(
-    "ANYWHERE_OCR_PYTHON",
-    (conda run -n ult python -c "import sys; print(sys.executable)").Trim(),
-    "User"
+"ANYWHERE_OCR_PYTHON",
+(conda run -n ult python -c "import sys; print(sys.executable)").Trim(),
+"User"
 )
 [Environment]::SetEnvironmentVariable("ANYWHERE_OCR_USE_GPU", "1", "User")
 [Environment]::SetEnvironmentVariable("ANYWHERE_OCR_GPU_ID", "0", "User")
 ```
 
-设置后重新启动 AutoHotkey 或注销并重新登录，使新环境变量生效。
+After setting these, restart AutoHotkey, or log out and log back in for the new environment variables to take effect.
 
-也可以只在当前 PowerShell 会话中设置并从该窗口启动脚本：
+Alternatively, you can set them only for the current PowerShell session and launch the script from that same window:
 
 ```powershell
 $env:ANYWHERE_OCR_PYTHON = (conda run -n ult python -c "import sys; print(sys.executable)").Trim()
@@ -221,55 +200,43 @@ $env:ANYWHERE_OCR_USE_GPU = "1"
 $env:ANYWHERE_OCR_GPU_ID = "0"
 ```
 
-### 8. 下载默认 medium 模型
+### 8. Download the Default Medium Model
 
-可以跳过此步；第一次运行 Anywhere OCR 时会自动下载。若要提前下载并确认模型可用：
+This step is optional; the model will be downloaded automatically the first time you run Anywhere OCR. To download the models in advance and verify their availability, run:
 
 ```powershell
 python PaddleOCR\PaddleOCR_worker.py --model-tier medium --device gpu:0 --download-only
 ```
 
-成功后会显示：
+Upon success, the following message will appear:
 
 ```text
 PP-OCRv6_medium_det and PP-OCRv6_medium_rec are ready.
 ```
 
-### 9. 启动
+### 9. Launching
 
-双击 `anywhere-ocr.ahk`，或在 PowerShell 中执行：
+Double-click `anywhere-ocr.ahk`, or execute the following command in PowerShell:
 
 ```powershell
 & "C:\Program Files\AutoHotkey\AutoHotkeyU64.exe" ".\anywhere-ocr.ahk"
 ```
 
-首次启动需要初始化模型，时间比后续识别长。启动完成后，按住 `Win` 并拖动鼠标左键
-框选文字区域。
+The first launch requires model initialization, which takes longer than subsequent recognition tasks. Once initialized, hold down the `Win` key and use the left mouse button to drag and select the area containing the text.
 
-### Python 前端
+### Python Frontend
 
-仓库同时提供与 AHK 前端功能对应的 `anywhere-ocr.py`。它使用相同的
-PP-OCRv6 medium Worker，并支持 Win+鼠标框选、自动复制识别结果、F3 显示主窗口，
-以及百度/搜狗翻译入口。Python 前端使用 Windows API 完成截图和全局按键检测，不需要
-额外安装 Pillow、pywin32 或键鼠监听库。它通过 Windows 低级输入钩子拦截框选期间的
-鼠标事件，因此不会同时触发桌面选中、文件拖动或其他窗口中的点击操作；退出时会自动
-卸载钩子。
+The repository also provides `anywhere-ocr.py`, which offers functionality equivalent to the AHK frontend. It utilizes the same PP-OCRv6 medium worker and supports features such as `Win` + mouse-drag selection, automatic copying of recognized text, displaying the main window via the `F3` key, and integration with Baidu/Sogou translation services. The Python frontend uses Windows APIs for screen capture and global key detection, requiring no additional installations of libraries like Pillow, pywin32, or keyboard/mouse listeners. It employs Windows low-level input hooks to intercept mouse events during selection, ensuring that actions such as desktop item selection, file dragging, or clicks in other windows are not triggered; these hooks are automatically removed upon exit.
 
-在已安装 PaddleOCR 的环境中运行：
+Run the script in an environment where PaddleOCR is installed:
 
 ```powershell
 python .\anywhere-ocr.py
 ```
 
-也可以继续用 `ANYWHERE_OCR_PYTHON`、`ANYWHERE_OCR_USE_GPU` 和
-`ANYWHERE_OCR_GPU_ID` 指定 Worker 的解释器和设备。关闭主窗口只会隐藏程序；按 F3
-可以重新显示，点击窗口中的“退出”才会结束 Python 前端。与 AHK 版的内嵌翻译结果窗
-不同，Python 版的“翻译”按钮会在默认浏览器中打开所选翻译服务并预填 OCR 文本。
+You can also use the environment variables `ANYWHERE_OCR_PYTHON`, `ANYWHERE_OCR_USE_GPU`, and `ANYWHERE_OCR_GPU_ID` to specify the Python interpreter and device for the worker. Closing the main window only hides the application; press `F3` to bring it back. To fully terminate the Python frontend, click the "Exit" button within the main window. Unlike the AHK version, which displays translations in an embedded window, the Python version's "Translate" button opens the selected translation service in your default web browser with the OCR-extracted text pre-filled. ## Deployment Method 2: CPU-Only
 
-## 部署方式二：纯 CPU
-
-没有 NVIDIA GPU 时仍可运行。medium 在 CPU 上资源占用和延迟较高，普通电脑可考虑
-small 或 tiny。
+You can run the software even without an NVIDIA GPU. The `medium` model has high resource requirements and latency when running on a CPU; for standard computers, consider using the `small` or `tiny` models instead.
 
 ```powershell
 conda create -n anywhere-ocr python=3.10 -y
@@ -279,78 +246,152 @@ python -m pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/pac
 python -m pip install paddleocr==3.7.0
 ```
 
-设置解释器和 CPU 模式：
+Configure the interpreter and CPU mode:
 
 ```powershell
 [Environment]::SetEnvironmentVariable(
-    "ANYWHERE_OCR_PYTHON",
-    (python -c "import sys; print(sys.executable)").Trim(),
-    "User"
+"ANYWHERE_OCR_PYTHON",
+(python -c "import sys; print(sys.executable)").Trim(),
+"User"
 )
 [Environment]::SetEnvironmentVariable("ANYWHERE_OCR_USE_GPU", "0", "User")
 ```
 
-验证：
+Verification:
 
 ```powershell
 python -c "import paddle; print(paddle.__version__); print(paddle.device.get_device()); paddle.utils.run_check()"
 ```
 
-## 下载 medium、small 和 tiny模型
+## Native Worker (Low Memory)
 
-每个档位都必须同时下载一套检测模型（`*_det`）和一套识别模型（`*_rec`）。
-不要只下载其中一个。
+The Python worker keeps the whole PaddlePaddle runtime resident. On the reference machine it commits about 6 GB of memory (1.5 GB working set) plus 2.7 GB of GPU memory just to stay ready. The native worker in `OcrWorker\` replaces it with a small C# program that runs the same PP-OCRv6 models through ONNX Runtime:
 
-### 使用本项目 Worker 下载（推荐）
+- No Python, PaddlePaddle or CUDA at run time. Only the .NET 8 runtime is needed, which Windows 10/11 users usually already have, plus the DirectML DLL that ships with the build.
+- GPU acceleration through DirectML, so it works on NVIDIA, AMD and Intel GPUs and needs no CUDA toolkit. Pass `--device cpu` to run on the CPU instead.
+- The detection and recognition pre/post-processing (DB post-processing, box sorting, perspective crops, CTC decoding) is a line-by-line port of the PaddleX pipeline, so results match the Python worker.
+- Same localhost protocol (`GET /health`, `POST /ocr`), so `PaddleOCR.ahk` and `anywhere-ocr.py` work unchanged and pick it automatically.
 
-激活已经安装 PaddleOCR 的环境，在项目根目录执行：
+### 1. Build the worker
+
+Install the [.NET 8 SDK](https://dotnet.microsoft.com/download) (no C++ compiler or Windows SDK is required), then run:
 
 ```powershell
-# 高精度 medium
+OcrWorker\publish.cmd
+```
+
+This produces `OcrWorker\dist\AnywhereOcrWorker.exe` together with `onnxruntime.dll` and `DirectML.dll`.
+
+### 2. Export the models to ONNX
+
+The official Paddle inference files must be converted once. In an environment that has `paddlepaddle` and `paddle2onnx` (the `ult` environment from the Conda deployment works), run:
+
+```powershell
+python tools\export_onnx.py                # medium, the default
+python tools\export_onnx.py --tier small   # or tiny
+```
+
+The script reads `%USERPROFILE%\.paddlex\official_models` (download the models first with `PaddleOCR_worker.py --download-only` if they are missing) and writes `models\PP-OCRv6_<tier>_det.onnx`, `models\PP-OCRv6_<tier>_rec.onnx` and `models\PP-OCRv6_<tier>_dict.txt`. The ONNX files are about 140 MB for `medium` and are ignored by git.
+
+### 3. Run
+
+Double-click `anywhere-ocr.ahk` as before. The worker can also be started by hand to see its log:
+
+```powershell
+OcrWorker\dist\AnywhereOcrWorker.exe --device gpu:0 --verbose
+```
+
+Useful options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--device cpu` / `--device gpu:N` | `cpu` | `gpu:N` selects DirectML adapter `N`; falls back to CPU if DirectML is unavailable. |
+| `--model-tier medium\|small\|tiny` | `medium` | Which exported model pair to load. |
+| `--models DIR` | `models` next to the project | Folder with the exported ONNX files; `ANYWHERE_OCR_MODELS` does the same. |
+| `--threads N` | all logical cores | Intra-op threads for CPU inference. |
+| `--port N` | `48626` | Listening port on `127.0.0.1`. |
+| `--idle-unload SECONDS` | `300` | Release the models (and all GPU buffers) after this long without requests; the next request reloads them in about 1 s. `0` keeps them loaded. `ANYWHERE_OCR_IDLE_UNLOAD` does the same. |
+| `--test IMAGE [--all] [--repeat N]` | | Recognize one file, print the text (or JSON with `--all`) and exit. |
+
+### Choosing the backend
+
+| Environment Variable | Example | Description |
+| --- | --- | --- |
+| `ANYWHERE_OCR_WORKER` | `D:\tools\AnywhereOcrWorker.exe` | Use a native worker stored elsewhere. |
+| `ANYWHERE_OCR_BACKEND` | `python` | Force the Python worker even if the native one exists. |
+| `ANYWHERE_OCR_MODELS` | `D:\models` | Folder with the exported ONNX models. |
+| `ANYWHERE_OCR_IDLE_UNLOAD` | `120` | Seconds without requests after which the native worker releases the models (`0` disables). |
+
+`ANYWHERE_OCR_USE_GPU` and `ANYWHERE_OCR_GPU_ID` apply to both workers.
+
+### Measured footprint
+
+Both workers were measured on the same machine (Windows 10, RTX 4060 Ti 16 GB, driver 560.94) with the `medium` models, recognizing a 2560x1440 screenshot three times after warm-up.
+
+| Worker | State | Working set | Private bytes | GPU memory | Time per screenshot |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Python (PaddleOCR 3.7, CUDA) | loaded, idle or after OCR | 1537 MB | 5968 MB | 2728 MB | 1.2–1.4 s |
+| Native (DirectML) | after start-up | 368 MB | 516 MB | 234 MB | |
+| Native (DirectML) | after OCR | 471 MB | 4195 MB | 3808 MB | 1.9 s |
+| Native (DirectML) | after idle unload (default: 300 s without requests) | 155 MB | 127 MB | 0 MB | next request takes about 1 s longer |
+| Native (CPU, 20 threads) | after OCR | 442 MB | 447 MB | 0 MB | 40 s |
+
+The DirectML private bytes after an OCR are the D3D12 buffers that ONNX Runtime's allocator keeps for reuse; they are backed by GPU memory rather than RAM, and the idle unload (`--idle-unload`, `ANYWHERE_OCR_IDLE_UNLOAD`) releases them together with the models. The recognized text was identical between the DirectML and CPU runs and matched the Python worker on 181 of 184 lines; the remaining lines differed by one character because of interpolation rounding. The `medium` models are heavy on a CPU, so use the `small` or `tiny` tier there.
+
+## Downloading `medium`, `small`, and `tiny` Models
+
+For each tier, you must download both a detection model (`*_det`) and a recognition model (`*_rec`).
+Do not download only one of them.
+
+### Using the Project's Worker to Download (Recommended)
+
+Activate the environment where PaddleOCR is installed, then run the following commands from the project root directory:
+
+```powershell
+# High-precision: medium
 python PaddleOCR\PaddleOCR_worker.py --model-tier medium --device cpu --download-only
 
-# 平衡型 small
+# Balanced: small
 python PaddleOCR\PaddleOCR_worker.py --model-tier small --device cpu --download-only
 
-# 迷你型 tiny
+# Lightweight: tiny
 python PaddleOCR\PaddleOCR_worker.py --model-tier tiny --device cpu --download-only
 ```
 
-下载阶段使用 `--device cpu` 即可，即使之后准备在 GPU 上推理也不影响模型文件。
-若希望下载后立即测试 GPU 初始化，可以改为 `--device gpu:0`。
+You can use `--device cpu` during the download phase; this will not affect the model files, even if you intend to perform inference on a GPU later. If you wish to test GPU initialization immediately after the download, you can change the setting to `--device gpu:0`.
 
-### 使用 PaddleOCR Python API 下载
+### Downloading via the PaddleOCR Python API
 
-下面的脚本会依次下载三组检测和识别模型：
+The following script will download three sets of detection and recognition models:
 
 ```powershell
 @'
 from paddleocr import PaddleOCR
 
 for tier in ("medium", "small", "tiny"):
-    name = f"PP-OCRv6_{tier}"
-    print(f"Preparing {name}...")
-    PaddleOCR(
-        text_detection_model_name=f"{name}_det",
-        text_recognition_model_name=f"{name}_rec",
-        use_doc_orientation_classify=False,
-        use_doc_unwarping=False,
-        use_textline_orientation=False,
-        device="cpu",
-    )
-    print(f"{name} is ready.")
+name = f"PP-OCRv6_{tier}"
+print(f"Preparing {name}...")
+PaddleOCR(
+text_detection_model_name=f"{name}_det",
+text_recognition_model_name=f"{name}_rec",
+use_doc_orientation_classify=False,
+use_doc_unwarping=False,
+use_textline_orientation=False,
+device="cpu",
+)
+print(f"{name} is ready.")
 '@ | python -
 ```
 
-### 模型缓存位置
+### Model Cache Location
 
-PaddleOCR/PaddleX 默认把官方模型缓存到：
+By default, PaddleOCR/PaddleX caches official models at:
 
 ```text
 %USERPROFILE%\.paddlex\official_models\
 ```
 
-下载完成后通常可以看到：
+Once the download is complete, you should see the following:
 
 ```text
 PP-OCRv6_medium_det
@@ -361,191 +402,192 @@ PP-OCRv6_tiny_det
 PP-OCRv6_tiny_rec
 ```
 
-模型一旦缓存成功，后续启动不会重复下载。不要把模型复制到旧的
-`PaddleOCR\Dll\inference` 目录；该目录属于旧 PaddleOCR 2.x DLL，不能用于 v6。
+Once cached, the models will not be downloaded again during subsequent launches. Do not copy these models to the legacy `PaddleOCR\Dll\inference` directory; that directory is intended for older PaddleOCR 2.x DLLs and is incompatible with v6.
 
-### 离线部署
+### Offline Deployment
 
-在联网电脑上完成上述下载后，将整个
-`%USERPROFILE%\.paddlex\official_models` 目录复制到离线电脑相同用户目录下。
-离线电脑仍需提前安装 Python、对应版本的 PaddlePaddle、PaddleOCR 及其依赖。
-
-复制后执行以下命令验证，不应再访问网络：
+After completing the download on a machine with internet access, copy the entire `%USERPROFILE%\.paddlex\official_models` directory to the corresponding user directory on the offline machine. The offline machine must still have Python, the appropriate version of PaddlePaddle, PaddleOCR, and all necessary dependencies installed beforehand. After copying, execute the following command to verify; it should no longer attempt to access the network:
 
 ```powershell
 python PaddleOCR\PaddleOCR_worker.py --model-tier medium --device cpu --download-only
 ```
 
-## 当前项目如何选择模型
+## Selecting Models for This Project
 
-Anywhere OCR 默认并固定使用精度最高的 medium：
+Anywhere OCR defaults to—and is hardcoded to use—the `medium` model, which offers the highest accuracy:
 
 ```autohotkey
 PaddleOCR(Vs, {"model":"PP-OCRv6_medium"})
 ```
 
-下载 small 或 tiny 不会自动改变应用当前使用的模型。它们主要用于测试、低配置部署
-或后续二次开发。若需要把整个应用切换到其他档位，需要同时修改 Worker 的启动参数、
-健康检查模型名和 AHK 配置；不能把 small 检测模型与 medium 识别模型混搭后假设得到
-相同效果。
+Downloading the `small` or `tiny` models will not automatically change the model currently used by the application. These are primarily intended for testing, deployment on low-spec hardware, or further secondary development. If you wish to switch the entire application to a different model tier, you must update the Worker's startup parameters, the model name used for health checks, and the AHK configuration. You cannot simply mix and match components—such as using a `small` detection model with a `medium` recognition model—and expect the same level of performance.
 
-手动测试其他档位可以启动独立 Worker：
+To manually test other tiers, you can launch a separate Worker instance:
 
 ```powershell
 python PaddleOCR\PaddleOCR_worker.py --model-tier small --device gpu:0
 python PaddleOCR\PaddleOCR_worker.py --model-tier tiny --device gpu:0
 ```
 
-默认端口是 `48626`。一次只能有一个进程占用该端口，测试前请先退出已有 Worker，
-或使用 `--port` 指定其他端口。
+The default port is `48626`. Since only one process can occupy this port at a time, please ensure any existing Worker instance is closed before testing, or specify a different port using the `--port` argument.
 
-## 配置参数
+## Configuration Parameters
 
-`PaddleOCR(Image, Configs)` 支持：
+`PaddleOCR(Image, Configs)` supports the following:
 
-| 参数 | 默认值 | 说明 |
+| Parameter | Default Value | Description |
 | --- | --- | --- |
-| `model` | `PP-OCRv6_medium` | 当前应用只运行 medium；保留旧别名以兼容原调用 |
-| `use_gpu` | 检测到默认 `ult` 时为 `1` | `1` 使用 GPU，`0` 使用 CPU |
-| `gpu_id` | `0` | NVIDIA GPU 编号 |
-| `python` | 默认 `ult` 或 PATH 中的 Python | Python 解释器完整路径 |
-| `get_all_info` | `0` | `1` 返回包含坐标、得分等数据的 JSON |
+| `model` | `PP-OCRv6_medium` | Currently, only the `medium` model is supported; legacy aliases are retained for backward compatibility. |
+| `use_gpu` | `1` (if `ult` is detected) | `1` to use GPU, `0` to use CPU. |
+| `gpu_id` | `0` | NVIDIA GPU index. |
+| `python` | `ult` (default) or the Python executable found in the system PATH | Full path to the Python interpreter (Python worker only). |
+| `worker` | `OcrWorker\dist\AnywhereOcrWorker.exe` | Full path to the native worker executable. |
+| `backend` | `native` when the executable exists | `python` forces the Python worker. |
+| `get_all_info` | `0` | `1` to return a JSON object containing data such as coordinates and confidence scores. |
 
-也可以通过环境变量配置：
+Configuration can also be managed via environment variables:
 
-| 环境变量 | 示例 | 说明 |
+| Environment Variable | Example | Description |
 | --- | --- | --- |
-| `ANYWHERE_OCR_PYTHON` | `C:\Miniconda3\envs\ult\python.exe` | Python 路径 |
-| `ANYWHERE_OCR_USE_GPU` | `1` | 是否使用 GPU |
-| `ANYWHERE_OCR_GPU_ID` | `0` | GPU 编号 |
+| `ANYWHERE_OCR_PYTHON` | `C:\Miniconda3\envs\ult\python.exe` | Path to the Python executable. |
+| `ANYWHERE_OCR_USE_GPU` | `1` | Whether to use the GPU. |
+| `ANYWHERE_OCR_GPU_ID` | `0` | GPU index. |
+| `ANYWHERE_OCR_WORKER` | `D:\tools\AnywhereOcrWorker.exe` | Path to the native worker executable. |
+| `ANYWHERE_OCR_BACKEND` | `python` | Force the Python worker. |
+| `ANYWHERE_OCR_MODELS` | `D:\models` | Folder with the exported ONNX models (native worker). |
 
-函数调用参数的优先级高于环境变量。
+Parameters passed during function calls take precedence over environment variables.
 
-## 性能说明
+## Performance Notes
 
-- 第一次执行包含模型下载、模型构建和显存分配，因此不能代表日常识别速度。
-- Worker 启动完成后的第二次及后续请求才适合测量性能。
-- 框选区域越大、文字越密集，检测时间越长。
-- medium 在 RTX 4060 Ti 16 GB 上运行流畅；其速度体验明显优于每次重新启动 Python
-  或每次重新加载模型的调用方式。
-- GPU 使用情况可以通过以下命令观察：
+- The first execution includes model downloading, model construction, and VRAM allocation; therefore, it is not representative of typical, ongoing recognition speeds.
+- Performance should be measured starting from the second request—after the worker process has fully initialized.
+- Larger selected regions and higher text density result in longer detection times.
+- The `medium` model runs smoothly on an RTX 4060 Ti (16 GB). This approach offers significantly better performance than methods that require restarting the Python interpreter or reloading the model for every call.
+- GPU usage can be monitored using the following command:
 
 ```powershell
 nvidia-smi
 ```
 
-- 若要进行可复现的性能对比，应固定图片、分辨率、模型档位和预热次数，并分别记录
-  首次耗时与预热后耗时。本项目不写入未经统一基准测试的毫秒数。
+- For reproducible performance benchmarking, ensure that the input image, resolution, model variant, and number of "warm-up" iterations remain constant. Record both the initial execution time and the time taken for subsequent (warmed-up) requests. This project does not include millisecond-latency figures that haven't been verified through standardized benchmarking.
 
-## 常见问题
+## FAQ
 
 ### 1. `PP-OCRv6_medium failed to start`
 
-先直接运行 Worker 查看完整错误：
+Run the Worker directly to view the full error message:
 
 ```powershell
 python PaddleOCR\PaddleOCR_worker.py --model-tier medium --device cpu
 ```
 
-确认当前 Python 中能导入两个包：
+Verify that both packages can be imported in your current Python environment:
 
 ```powershell
 python -c "import paddleocr; import paddle; print(paddleocr.__version__, paddle.__version__)"
 ```
 
-### 2. 显示 `CUDA build: False`
+### 2. Displays `CUDA build: False`
 
-安装的是 CPU 包。先卸载两个可能冲突的版本，再安装 GPU 包：
+You have installed the CPU-only version. Uninstall any potentially conflicting versions, then install the GPU-enabled package:
 
 ```powershell
 python -m pip uninstall -y paddlepaddle paddlepaddle-gpu
 python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
 ```
 
-### 3. 找不到 Python
+### 3. Python not found
 
-设置 `ANYWHERE_OCR_PYTHON` 为真实的 `python.exe` 完整路径，重新启动 AHK。
+Set `ANYWHERE_OCR_PYTHON` to the full, absolute path of your `python.exe` file, then restart AHK.
 
 ```powershell
 where.exe python
 conda run -n ult python -c "import sys; print(sys.executable)"
 ```
 
-### 4. 端口 `48626` 被占用
+### 4. Port `48626` is already in use
 
 ```powershell
 Get-NetTCPConnection -LocalPort 48626
 ```
 
-结束旧的 Anywhere OCR Worker，或修改 `PaddleOCR.ahk` 与 Worker 使用的端口。
-接口只监听 `127.0.0.1`，不会对局域网或互联网开放。
+Terminate the existing Anywhere OCR Worker process, or change the port used by both `PaddleOCR.ahk` and the Worker.
+The interface listens only on `127.0.0.1` and is not exposed to the local network or the internet.
 
-### 5. 首次运行长时间没有结果
+### 5. No results after a long wait during the first run
 
-通常正在下载 medium 的检测与识别权重。检查网络，并查看：
+The application is likely downloading the detection and recognition weights for the 'medium' model tier. Check your network connection and inspect the following directory:
 
 ```text
 %USERPROFILE%\.paddlex\official_models\
 ```
 
-也可以先执行 `--download-only`，在终端中观察下载进度。
+Alternatively, you can run the application with the `--download-only` flag to monitor the download progress in your terminal.
 
-### 6. 模型已经损坏或下载不完整
+### 6. Model is corrupted or the download is incomplete
 
-仅删除损坏的具体模型文件夹，然后重新运行下载命令。不要删除整个用户目录或项目
-目录。例如 medium 有问题时，只处理：
+Delete only the specific folder for the corrupted model, then re-run the download command. Do not delete the entire user directory or project
+directory. For example, if there is an issue with the "medium" model, address only the following:
 
 ```text
 %USERPROFILE%\.paddlex\official_models\PP-OCRv6_medium_det
 %USERPROFILE%\.paddlex\official_models\PP-OCRv6_medium_rec
 ```
 
-### 7. AHK v2 报语法错误
+### 7. AHK v2 Syntax Errors
 
-请使用 AutoHotkey v1.1 Unicode x64。当前代码没有迁移到 AHK v2 语法。
+Please use AutoHotkey v1.1 Unicode x64. The current code has not been migrated to AHK v2 syntax.
 
-### 8. 翻译页面脚本错误
+### 8. Script Errors on Translation Pages
 
-打开“控制面板 → Internet 选项 → 安全 → 本地 Intranet → 站点”，取消相关勾选。
+Go to "Control Panel → Internet Options → Security → Local Intranet → Sites" and uncheck the relevant options.
 
-### 9. 无法翻译
+### 9. Translation Fails
 
-安装或升级到最新版 [Microsoft Edge](https://www.microsoft.com/zh-cn/edge)。
+Install or upgrade to the latest version of [Microsoft Edge](https://www.microsoft.com/en-us/edge).
 
-## 安全说明
+## Security Notes
 
-- OCR 服务绑定在 `127.0.0.1`，只允许本机访问。
-- 截图会临时保存到系统临时目录，识别请求结束后自动删除。
-- OCR 模型在本机运行，截图不会由本项目上传到第三方 OCR API。
-- 百度/搜狗翻译属于独立功能；使用翻译时，文字会按相应翻译服务的工作方式发送。
+- The OCR service is bound to `127.0.0.1` and is accessible only from the local machine.
+- Screenshots are saved temporarily in the system's temporary directory and are automatically deleted once the recognition request is complete.
+- OCR models run locally; screenshots are not uploaded to any third-party OCR API by this project.
+- Baidu/Sogou translation features are independent; when used, text is transmitted according to the operational protocols of the respective translation service.
 
-## 开发和验证
+## Development and Verification
 
-检查 Worker 参数：
+Check Worker parameters:
 
 ```powershell
 python PaddleOCR\PaddleOCR_worker.py --help
 ```
 
-检查 Python 语法：
+Check Python syntax:
 
 ```powershell
 python -m py_compile PaddleOCR\PaddleOCR_worker.py
 ```
 
-检查 AHK v1 语法：
+Check AHK v1 syntax:
 
 ```powershell
 & "C:\Program Files\AutoHotkey\AutoHotkeyU64.exe" /ErrorStdOut PaddleOCR\PaddleOCR.ahk
 ```
 
-检查 Worker 健康状态：
+Build and smoke-test the native worker:
+
+```powershell
+dotnet build OcrWorker\OcrWorker.csproj -c Release
+OcrWorker\dist\AnywhereOcrWorker.exe --device gpu:0 --test screenshot.png --repeat 3
+```
+
+Check Worker health status:
 
 ```powershell
 Invoke-WebRequest http://127.0.0.1:48626/health
 ```
 
-medium Worker 正常时返回：
+If the "medium" Worker is functioning correctly, it will return:
 
 ```text
 PP-OCRv6_medium

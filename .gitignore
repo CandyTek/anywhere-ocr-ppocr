@@ -2,3 +2,9 @@
 __pycache__/
 *.py[cod]
 /dep
+
+# Native worker build output and exported ONNX models (export them with tools/export_onnx.py)
+/OcrWorker/bin/
+/OcrWorker/obj/
+/OcrWorker/dist/
+/models/*.onnx

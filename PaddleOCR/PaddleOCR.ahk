@@ -4,7 +4,14 @@ version:   2026.07.23
 
 PP-OCRv6 requires the current PaddleOCR runtime and cannot be loaded by the
 PaddleOCR 2.x DLL previously bundled with this project.  This wrapper keeps a
-local Python worker alive so that the medium models are loaded only once.
+local OCR worker alive so that the medium models are loaded only once.
+
+Two interchangeable workers speak the same localhost protocol:
+  - OcrWorker\dist\AnywhereOcrWorker.exe  (C# + ONNX Runtime + DirectML, a few
+    hundred MB of RAM; preferred whenever it has been built)
+  - PaddleOCR_worker.py                   (PaddleOCR 3.x in Python, several GB)
+Set ANYWHERE_OCR_WORKER to the exe path to use a copy stored elsewhere, or set
+ANYWHERE_OCR_BACKEND=python to force the Python worker.
 */
 PaddleOCR(Image, Configs:="")
 {
@@ -24,6 +31,11 @@ PaddleOCR(Image, Configs:="")
     EnvGet, envPython, ANYWHERE_OCR_PYTHON
     EnvGet, envUseGPU, ANYWHERE_OCR_USE_GPU
     EnvGet, envGpuID, ANYWHERE_OCR_GPU_ID
+    EnvGet, envWorker, ANYWHERE_OCR_WORKER
+    EnvGet, envBackend, ANYWHERE_OCR_BACKEND
+    nativeWorker := A_LineFile "\..\..\OcrWorker\dist\AnywhereOcrWorker.exe"
+    if (envWorker != "")
+        nativeWorker := envWorker
     if (envPython != "")
         python := envPython
     if (envUseGPU != "")
@@ -40,7 +52,12 @@ PaddleOCR(Image, Configs:="")
             gpu_id := Configs.gpu_id
         if (Configs.HasKey("python"))
             python := Configs.python
+        if (Configs.HasKey("worker"))
+            nativeWorker := Configs.worker
+        if (Configs.HasKey("backend"))
+            envBackend := Configs.backend
     }
+    useNative := (envBackend != "python") && FileExist(nativeWorker)
 
     ; PP-OCRv6_medium is deliberately the only model used by this wrapper.
     ; Keep accepting the old model option so existing callers do not break.
@@ -66,20 +83,40 @@ PaddleOCR(Image, Configs:="")
         WorkerReady := PaddleOCR_WorkerIsReady(WorkerPort)
         if (!WorkerReady)
         {
-            worker := A_LineFile "\..\PaddleOCR_worker.py"
             device := use_gpu ? "gpu:" gpu_id : "cpu"
-            command := """" python """ """ worker """ --port "
-                . WorkerPort " --device " device
-            Run, % command, % A_LineFile "\..", Hide UseErrorLevel, WorkerPID
+            if (useNative)
+            {
+                command := """" nativeWorker """ --port " WorkerPort
+                    . " --device " device
+                workDir := nativeWorker "\.."
+            }
+            else
+            {
+                worker := A_LineFile "\..\PaddleOCR_worker.py"
+                command := """" python """ """ worker """ --port "
+                    . WorkerPort " --device " device
+                workDir := A_LineFile "\.."
+            }
+            Run, % command, % workDir, Hide UseErrorLevel, WorkerPID
             if (ErrorLevel)
             {
-                MsgBox, 0x40010, Anywhere OCR,
-                    (LTrim
-                    Unable to start Python.
+                if (useNative)
+                    MsgBox, 0x40010, Anywhere OCR,
+                        (LTrim
+                        Unable to start the OCR worker:
+                        %nativeWorker%
 
-                    Install Python and run:
-                    python -m pip install paddlepaddle paddleocr
-                    )
+                        Rebuild it with OcrWorker\publish.cmd, or set
+                        ANYWHERE_OCR_BACKEND=python to use the Python worker.
+                        )
+                else
+                    MsgBox, 0x40010, Anywhere OCR,
+                        (LTrim
+                        Unable to start Python.
+
+                        Install Python and run:
+                        python -m pip install paddlepaddle paddleocr
+                        )
                 return, ""
             }
 
@@ -100,14 +137,25 @@ PaddleOCR(Image, Configs:="")
 
         if (!WorkerReady)
         {
-            MsgBox, 0x40010, Anywhere OCR,
-                (LTrim
-                PP-OCRv6_medium failed to start.
+            if (useNative)
+                MsgBox, 0x40010, Anywhere OCR,
+                    (LTrim
+                    PP-OCRv6_medium failed to start.
 
-                From a terminal in the project folder, run:
-                python -m pip install paddlepaddle paddleocr
-                python PaddleOCR\PaddleOCR_worker.py
-                )
+                    From a terminal in the project folder, run:
+                    OcrWorker\dist\AnywhereOcrWorker.exe --device %device%
+                    to see the error.  The ONNX models must exist in the
+                    'models' folder (see tools\export_onnx.py).
+                    )
+            else
+                MsgBox, 0x40010, Anywhere OCR,
+                    (LTrim
+                    PP-OCRv6_medium failed to start.
+
+                    From a terminal in the project folder, run:
+                    python -m pip install paddlepaddle paddleocr
+                    python PaddleOCR\PaddleOCR_worker.py
+                    )
             return, ""
         }
     }
