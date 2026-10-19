@@ -592,3 +592,18 @@ If the "medium" Worker is functioning correctly, it will return:
 ```text
 PP-OCRv6_medium
 ```
+
+### Real-world testing
+
+  Measured on this machine (RTX 4060 Ti, medium models, same screenshot):
+
+  |         Worker         |              State               |  Working set  | Private |  GPU   |  Per screenshot  |
+  | --- | --- | --- | --- | --- | --- |
+  | Python (CUDA)          | idle or after OCR                |    1537 MB | 5968 MB |  2728 MB |        1.2–1.4 s |
+  | Native DirectML        | after OCR                        |     471 MB | 4195 MB |  3808 MB |            1.9 s |
+  | Native DirectML        | after idle unload (default 300s)   |     155 MB |  127 MB |      0 | next request +1s  |
+  | Native CPU (20 threads)         | after OCR                        |     442 MB |  447 MB |      0 |             40 s |
+
+  The DirectML private bytes after OCR are GPU buffers that ONNX Runtime caches, backed by VRAM rather than RAM. The
+  idle unload releases them. The medium model is slow on CPU, so the small or tiny tier is the right choice without a
+  GPU.
